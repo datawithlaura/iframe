@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iframe Data Extractor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom styles for a cleaner look */
+        .card {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease-in-out;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .iframe-container {
+            border: 1px solid #e5e7eb; /* gray-200 */
+            border-radius: 0.75rem; /* rounded-xl */
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+
+        <!-- Header Section -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-900">Iframe Flow Extractor</h1>
+            <p class="mt-2 text-lg text-gray-600">Complete the flow in the iframe below to retrieve the final JSON data.</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            
+            <!-- Iframe Section -->
+            <div class="iframe-container bg-white">
+                <iframe id="flow-iframe" class="w-full h-[600px]" src="https://demomexico4iserviciosv2.azurewebsites.net/?key=f12a333f-1c97-43b9-8c1c-bd5c39cf937a" title="Embedded Flow"></iframe>
+            </div>
+
+            <!-- Data Display Section -->
+            <div id="data-container" class="card bg-white rounded-xl p-6">
+                <h2 class="text-2xl font-semibold text-gray-900 mb-4">Received Data</h2>
+                <p id="status-message" class="text-gray-500 italic">Waiting for data from the iframe...</p>
+                <div class="mt-4 bg-gray-900 rounded-lg p-4 text-sm text-green-300 font-mono overflow-x-auto hidden" id="json-display-wrapper">
+                    <pre id="json-output"></pre>
+                </div>
+                 <button id="copy-button" class="mt-4 w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-colors hidden">
+                    Copy to Clipboard
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- SCRIPT TO LISTEN FOR IFRAME MESSAGES ---
+
+        // Get references to DOM elements
+        const statusMessage = document.getElementById('status-message');
+        const jsonOutput = document.getElementById('json-output');
+        const jsonDisplayWrapper = document.getElementById('json-display-wrapper');
+        const copyButton = document.getElementById('copy-button');
+
+        /**
+         * Listens for 'message' events from any window.
+         * This is the core of cross-origin communication.
+         * @param {MessageEvent} event - The event object containing the data.
+         */
+        window.addEventListener('message', (event) => {
+            // IMPORTANT: For security, you should always check the origin of the message.
+            // This ensures you only accept messages from trusted sources.
+            // In this case, we are expecting messages from the Azure website.
+            if (event.origin !== 'https://demomexico4iserviciosv2.azurewebsites.net') {
+                console.warn('Message received from unexpected origin:', event.origin);
+                return; // Ignore messages from other origins
+            }
+
+            console.log('Message received from iframe:', event.data);
+
+            // Check if the received data is not empty
+            if (event.data) {
+                try {
+                    // The data might be a stringified JSON or a direct object.
+                    // We'll try to parse it if it's a string.
+                    const jsonData = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+
+                    // Hide the "waiting" message
+                    statusMessage.style.display = 'none';
+
+                    // Display the formatted JSON data
+                    jsonOutput.textContent = JSON.stringify(jsonData, null, 2); // Pretty print JSON
+                    jsonDisplayWrapper.classList.remove('hidden');
+
+                    // Show the copy button
+                    copyButton.classList.remove('hidden');
+
+                } catch (error) {
+                    // If parsing fails, display the raw data
+                    console.error('Error parsing JSON data:', error);
+                    statusMessage.textContent = 'Received data, but it was not valid JSON. See raw data below.';
+                    jsonOutput.textContent = event.data;
+                    jsonDisplayWrapper.classList.remove('hidden');
+                }
+            }
+        });
+
+        /**
+         * Copies the content of the JSON output to the clipboard.
+         */
+        copyButton.addEventListener('click', () => {
+            const textToCopy = jsonOutput.textContent;
+            
+            // Using a temporary textarea element to facilitate the copy command
+            const textArea = document.createElement('textarea');
+            textArea.value = textToCopy;
+            document.body.appendChild(textArea);
+            textArea.select();
+            
+            try {
+                // Use the older execCommand for broader browser compatibility in iframes
+                document.execCommand('copy');
+                copyButton.textContent = 'Copied!';
+                setTimeout(() => {
+                    copyButton.textContent = 'Copy to Clipboard';
+                }, 2000); // Reset button text after 2 seconds
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+                copyButton.textContent = 'Copy Failed';
+            }
+            
+            document.body.removeChild(textArea);
+        });
+
+    </script>
+
+</body>
+</html>
