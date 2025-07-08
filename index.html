@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Iframe Data Extractor</title>
+    <title>Iframe Data Extractor with Webhook</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -15,36 +15,63 @@
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
             transition: all 0.3s ease-in-out;
         }
-        .card:hover {
-            transform: translateY(-5px);
-        }
         .iframe-container {
             border: 1px solid #e5e7eb; /* gray-200 */
             border-radius: 0.75rem; /* rounded-xl */
             overflow: hidden;
+            /* Ensure iframe takes up space */
+            min-height: 650px;
+        }
+        .alert {
+            border-left-width: 4px;
+            padding: 1rem;
+        }
+        .alert-info {
+            border-color: #3b82f6; /* blue-500 */
+            background-color: #eff6ff; /* blue-50 */
         }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800">
 
-    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+    <div class="container mx-auto p-4 md:p-8 max-w-4xl">
 
         <!-- Header Section -->
         <header class="text-center mb-8">
             <h1 class="text-4xl font-bold text-gray-900">Iframe Flow Extractor</h1>
-            <p class="mt-2 text-lg text-gray-600">Complete the flow in the iframe below to retrieve the final JSON data.</p>
+            <p class="mt-2 text-lg text-gray-600">Send final flow data to a webhook.</p>
         </header>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Instructions -->
+        <div class="alert alert-info mb-8" role="alert">
+            <p class="font-bold">Important Instructions</p>
+            <p class="text-sm text-gray-700 mt-1">
+                This flow is designed for **mobile devices**. Please use your phone or your browser's developer tools to simulate a mobile view for the process to work correctly.
+            </p>
+        </div>
+        
+        <div class="flex flex-col gap-8">
             
             <!-- Iframe Section -->
-            <div class="iframe-container bg-white">
-                <iframe id="flow-iframe" class="w-full h-[600px]" src="https://demomexico4iserviciosv2.azurewebsites.net/?key=f12a333f-1c97-43b9-8c1c-bd5c39cf937a" title="Embedded Flow"></iframe>
+            <div class="iframe-container bg-white w-full">
+                <iframe id="flow-iframe" class="w-full h-full border-0" src="https://demomexico4iserviciosv2.azurewebsites.net/?key=f12a333f-1c97-43b9-8c1c-bd5c39cf937a" title="Embedded Flow"></iframe>
             </div>
 
-            <!-- Data Display Section -->
+            <!-- Data & Webhook Section -->
             <div id="data-container" class="card bg-white rounded-xl p-6">
-                <h2 class="text-2xl font-semibold text-gray-900 mb-4">Received Data</h2>
+                <h2 class="text-2xl font-semibold text-gray-900 mb-4">Data & Webhook</h2>
+                
+                <!-- Webhook Input -->
+                <div class="mb-6">
+                    <label for="webhook-url" class="block mb-2 text-sm font-medium text-gray-900">Webhook URL</label>
+                    <input type="url" id="webhook-url" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" placeholder="https://your-webhook-url.com/api" required>
+                    <p id="webhook-status" class="mt-2 text-sm text-gray-500"></p>
+                </div>
+
+                <hr class="my-4">
+
+                <!-- Data Display -->
+                <h3 class="text-xl font-semibold text-gray-900 mb-2">Received Data</h3>
                 <p id="status-message" class="text-gray-500 italic">Waiting for data from the iframe...</p>
                 <div class="mt-4 bg-gray-900 rounded-lg p-4 text-sm text-green-300 font-mono overflow-x-auto hidden" id="json-display-wrapper">
                     <pre id="json-output"></pre>
@@ -58,81 +85,118 @@
     </div>
 
     <script>
-        // --- SCRIPT TO LISTEN FOR IFRAME MESSAGES ---
+        // --- SCRIPT TO LISTEN FOR IFRAME MESSAGES AND SEND TO WEBHOOK ---
 
         // Get references to DOM elements
         const statusMessage = document.getElementById('status-message');
         const jsonOutput = document.getElementById('json-output');
         const jsonDisplayWrapper = document.getElementById('json-display-wrapper');
         const copyButton = document.getElementById('copy-button');
+        const webhookUrlInput = document.getElementById('webhook-url');
+        const webhookStatus = document.getElementById('webhook-status');
 
         /**
-         * Listens for 'message' events from any window.
-         * This is the core of cross-origin communication.
+         * Listens for 'message' events from the iframe.
          * @param {MessageEvent} event - The event object containing the data.
          */
         window.addEventListener('message', (event) => {
-            // IMPORTANT: For security, you should always check the origin of the message.
-            // This ensures you only accept messages from trusted sources.
-            // In this case, we are expecting messages from the Azure website.
+            // Security check: only accept messages from the expected origin.
             if (event.origin !== 'https://demomexico4iserviciosv2.azurewebsites.net') {
                 console.warn('Message received from unexpected origin:', event.origin);
-                return; // Ignore messages from other origins
+                return;
             }
 
             console.log('Message received from iframe:', event.data);
 
-            // Check if the received data is not empty
             if (event.data) {
+                let jsonData;
                 try {
-                    // The data might be a stringified JSON or a direct object.
-                    // We'll try to parse it if it's a string.
-                    const jsonData = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+                    // Parse the data from the iframe.
+                    jsonData = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
 
-                    // Hide the "waiting" message
-                    statusMessage.style.display = 'none';
+                    // Display the received data on the page.
+                    displayReceivedData(jsonData);
 
-                    // Display the formatted JSON data
-                    jsonOutput.textContent = JSON.stringify(jsonData, null, 2); // Pretty print JSON
-                    jsonDisplayWrapper.classList.remove('hidden');
-
-                    // Show the copy button
-                    copyButton.classList.remove('hidden');
+                    // Send the data to the webhook.
+                    sendToWebhook(jsonData);
 
                 } catch (error) {
-                    // If parsing fails, display the raw data
-                    console.error('Error parsing JSON data:', error);
-                    statusMessage.textContent = 'Received data, but it was not valid JSON. See raw data below.';
-                    jsonOutput.textContent = event.data;
+                    console.error('Error processing received data:', error);
+                    statusMessage.textContent = 'Received data, but it was not valid JSON.';
+                    jsonOutput.textContent = event.data; // Display raw data on error
                     jsonDisplayWrapper.classList.remove('hidden');
                 }
             }
         });
 
         /**
+         * Displays the received JSON data in the UI.
+         * @param {object} data - The parsed JSON data.
+         */
+        function displayReceivedData(data) {
+            statusMessage.style.display = 'none';
+            jsonOutput.textContent = JSON.stringify(data, null, 2); // Pretty print JSON
+            jsonDisplayWrapper.classList.remove('hidden');
+            copyButton.classList.remove('hidden');
+        }
+
+        /**
+         * Sends the provided data to the webhook URL from the input field.
+         * @param {object} data - The data to send.
+         */
+        async function sendToWebhook(data) {
+            const webhookUrl = webhookUrlInput.value;
+
+            if (!webhookUrl) {
+                webhookStatus.textContent = 'Please enter a webhook URL to send the data.';
+                webhookStatus.className = 'mt-2 text-sm text-yellow-600';
+                return;
+            }
+
+            webhookStatus.textContent = 'Sending data to webhook...';
+            webhookStatus.className = 'mt-2 text-sm text-gray-500';
+
+            try {
+                const response = await fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data),
+                });
+
+                if (response.ok) {
+                    webhookStatus.textContent = 'Successfully sent data to webhook!';
+                    webhookStatus.className = 'mt-2 text-sm text-green-600';
+                } else {
+                    const errorText = await response.text();
+                    webhookStatus.textContent = `Webhook failed with status ${response.status}: ${errorText}`;
+                    webhookStatus.className = 'mt-2 text-sm text-red-600';
+                }
+            } catch (error) {
+                console.error('Error sending data to webhook:', error);
+                webhookStatus.textContent = 'An error occurred while sending the data. Check the console.';
+                webhookStatus.className = 'mt-2 text-sm text-red-600';
+            }
+        }
+
+        /**
          * Copies the content of the JSON output to the clipboard.
          */
         copyButton.addEventListener('click', () => {
             const textToCopy = jsonOutput.textContent;
-            
-            // Using a temporary textarea element to facilitate the copy command
             const textArea = document.createElement('textarea');
             textArea.value = textToCopy;
             document.body.appendChild(textArea);
             textArea.select();
-            
             try {
-                // Use the older execCommand for broader browser compatibility in iframes
                 document.execCommand('copy');
                 copyButton.textContent = 'Copied!';
-                setTimeout(() => {
-                    copyButton.textContent = 'Copy to Clipboard';
-                }, 2000); // Reset button text after 2 seconds
+                setTimeout(() => { copyButton.textContent = 'Copy to Clipboard'; }, 2000);
             } catch (err) {
                 console.error('Failed to copy text: ', err);
                 copyButton.textContent = 'Copy Failed';
             }
-            
             document.body.removeChild(textArea);
         });
 
